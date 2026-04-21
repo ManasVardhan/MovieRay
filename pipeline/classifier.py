@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
-import anthropic
+
+import requests
 
 # Keyword patterns for transcript-based heuristic classification
 SPONSOR_KEYWORDS = [
@@ -140,19 +142,18 @@ def classify_with_llm_batch(segments: list[dict], transcript_map: dict[int, str]
     if not transcript_map:
         return []
 
-    import os
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
         import click
-        click.echo("  No ANTHROPIC_API_KEY set — skipping LLM classification, defaulting to core_content")
+        click.echo("  No OPENROUTER_API_KEY set — skipping LLM classification, defaulting to core_content")
         return [
             {"index": idx, "label": "core_content", "confidence": 0.5, "reason": "No API key, defaulted to content"}
             for idx in transcript_map
         ]
 
-    client = anthropic.Anthropic()
     results = []
-
     items = list(transcript_map.items())
+
     for batch_start in range(0, len(items), 10):
         batch = items[batch_start : batch_start + 10]
 
@@ -176,17 +177,32 @@ Segments:
 
 Respond with ONLY the JSON array, no other text."""
 
-        message = client.messages.create(
-            model="claude-sonnet-4-5-20241022",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
         try:
-            response_text = message.content[0].text
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "anthropic/claude-sonnet-4",
+                    "max_tokens": 1024,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            data = response.json()
+            response_text = data["choices"][0]["message"]["content"].strip()
+            # Strip markdown code fencing if present
+            if response_text.startswith("```"):
+                response_text = re.sub(r"^```(?:json)?\s*", "", response_text)
+                response_text = re.sub(r"\s*```$", "", response_text)
             batch_results = json.loads(response_text)
             results.extend(batch_results)
-        except (json.JSONDecodeError, IndexError, KeyError):
+        except (requests.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+            import click
+            click.echo(f"  LLM batch failed: {e}")
             for idx, _ in batch:
                 results.append({
                     "index": idx, "label": "core_content",
