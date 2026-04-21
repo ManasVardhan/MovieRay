@@ -137,3 +137,27 @@ def test_static_video_has_low_motion():
         assert all(m < 1.0 for m in features["motion_magnitudes"])
     finally:
         os.unlink(tmp.name)
+
+
+from pipeline.extractors.speech import extract_speech_features
+
+
+def test_speech_features_returns_expected_keys():
+    import soundfile as sf
+
+    sr = 16000
+    samples = np.zeros(int(sr * 2.0))
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    sf.write(tmp.name, samples, sr)
+    tmp.close()
+
+    try:
+        features = extract_speech_features(tmp.name)
+        assert "segments" in features
+        assert isinstance(features["segments"], list)
+        for seg in features["segments"]:
+            assert "start" in seg
+            assert "end" in seg
+            assert "text" in seg
+    finally:
+        os.unlink(tmp.name)
