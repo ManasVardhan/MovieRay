@@ -58,3 +58,47 @@ def test_loud_audio_has_high_rms():
         assert all(v > 0.1 for v in features["rms_energy"])
     finally:
         os.unlink(tmp.name)
+
+
+from pipeline.extractors.visual import extract_visual_features
+import cv2
+import tempfile, os
+
+
+def _create_test_video(path: str, num_frames: int = 60, fps: int = 30):
+    """Create a simple test video with solid color frames."""
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(path, fourcc, fps, (320, 240))
+    for i in range(num_frames):
+        color = (0, 0, 255) if i < 30 else (255, 0, 0)
+        frame = np.full((240, 320, 3), color, dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
+
+
+def test_visual_features_returns_expected_keys():
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp.close()
+    _create_test_video(tmp.name, num_frames=60, fps=30)
+
+    try:
+        features = extract_visual_features(tmp.name, sample_fps=2)
+        assert "frame_timestamps" in features
+        assert "histograms" in features
+        assert "frame_similarities" in features
+        assert "shot_boundaries" in features
+        assert len(features["histograms"]) == len(features["frame_timestamps"])
+    finally:
+        os.unlink(tmp.name)
+
+
+def test_shot_boundary_detected_on_color_change():
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp.close()
+    _create_test_video(tmp.name, num_frames=60, fps=30)
+
+    try:
+        features = extract_visual_features(tmp.name, sample_fps=2)
+        assert len(features["shot_boundaries"]) >= 1
+    finally:
+        os.unlink(tmp.name)
