@@ -41,6 +41,15 @@ def classify_with_llm_batch(segments: list[dict], transcript_map: dict[int, str]
     if not transcript_map:
         return []
 
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        import click
+        click.echo("  No ANTHROPIC_API_KEY set — skipping LLM classification, defaulting to core_content")
+        return [
+            {"index": idx, "label": "core_content", "confidence": 0.5, "reason": "No API key, defaulted to content"}
+            for idx in transcript_map
+        ]
+
     client = anthropic.Anthropic()
     results = []
 
