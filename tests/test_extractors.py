@@ -102,3 +102,38 @@ def test_shot_boundary_detected_on_color_change():
         assert len(features["shot_boundaries"]) >= 1
     finally:
         os.unlink(tmp.name)
+
+
+from pipeline.extractors.motion import extract_motion_features
+
+
+def test_motion_features_returns_expected_keys():
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp.close()
+    _create_test_video(tmp.name, num_frames=60, fps=30)
+
+    try:
+        features = extract_motion_features(tmp.name, sample_fps=2)
+        assert "motion_magnitudes" in features
+        assert "motion_timestamps" in features
+        assert len(features["motion_magnitudes"]) == len(features["motion_timestamps"])
+    finally:
+        os.unlink(tmp.name)
+
+
+def test_static_video_has_low_motion():
+    """A video with identical frames should have near-zero motion."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    tmp.close()
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(tmp.name, fourcc, 30, (320, 240))
+    frame = np.full((240, 320, 3), (128, 128, 128), dtype=np.uint8)
+    for _ in range(90):
+        writer.write(frame)
+    writer.release()
+
+    try:
+        features = extract_motion_features(tmp.name, sample_fps=2)
+        assert all(m < 1.0 for m in features["motion_magnitudes"])
+    finally:
+        os.unlink(tmp.name)
