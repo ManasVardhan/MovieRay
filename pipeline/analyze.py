@@ -139,7 +139,8 @@ def main(video_path: str | None, youtube: str | None, output: str | None):
     click.echo("Classifying segments (heuristics)...")
     unclassified_indices = []
     for i, seg in enumerate(enriched_segments):
-        result = classify_heuristic(seg, duration)
+        transcript = transcript_map.get(i, "")
+        result = classify_heuristic(seg, duration, transcript=transcript)
         if result:
             seg["label"] = result["label"]
             seg["confidence"] = result["confidence"]
