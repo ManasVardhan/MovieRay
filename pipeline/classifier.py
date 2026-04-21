@@ -78,7 +78,7 @@ Segments:
 Respond with ONLY the JSON array, no other text."""
 
         message = client.messages.create(
-            model="claude-sonnet-4-6-20250514",
+            model="claude-sonnet-4-5-20241022",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
