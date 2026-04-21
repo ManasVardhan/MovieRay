@@ -1,16 +1,15 @@
-import whisper
+import mlx_whisper
 
 
 def extract_speech_features(
-    audio_path: str, model_name: str = "tiny"
+    audio_path: str, model_name: str = "mlx-community/whisper-small-mlx"
 ) -> dict:
-    """Transcribe audio using Whisper and return timestamped segments.
+    """Transcribe audio using mlx-whisper and return timestamped segments.
 
     Returns dict with key 'segments', a list of dicts with
     keys: start, end, text.
     """
-    model = whisper.load_model(model_name)
-    result = model.transcribe(audio_path, verbose=False)
+    result = mlx_whisper.transcribe(audio_path, path_or_hf_repo=model_name, verbose=False)
 
     segments = []
     for seg in result.get("segments", []):

@@ -1,6 +1,6 @@
 librosa>=0.10.0
 opencv-python>=4.8.0
-openai-whisper>=20231117
+mlx-whisper>=0.4.0
 anthropic>=0.40.0
 yt-dlp>=2024.0
 click>=8.1.0
