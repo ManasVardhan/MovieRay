@@ -4,6 +4,7 @@ import { VideoPlayer } from "./components/VideoPlayer";
 import { SegmentTimeline } from "./components/SegmentTimeline";
 import { SegmentPanel } from "./components/SegmentPanel";
 import { Controls } from "./components/Controls";
+import { SignalBars } from "./components/SignalBars";
 import type {
   Segment,
   SegmentLabel,
@@ -190,6 +191,15 @@ function App() {
             onToggleCategory={handleToggleCategory}
             onPlayContentOnly={handlePlayContentOnly}
           />
+
+          {metadata?.signals && (
+            <SignalBars
+              signals={metadata.signals}
+              duration={duration}
+              currentTime={currentTime}
+              onSeek={handleSeek}
+            />
+          )}
         </div>
 
         <div className="w-80 flex-shrink-0">

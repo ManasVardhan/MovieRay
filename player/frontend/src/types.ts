@@ -18,11 +18,19 @@ export type SegmentLabel =
   | "dead_air"
   | "filler";
 
+export interface SignalData {
+  timestamps: number[];
+  audio_energy: number[];
+  motion: number[];
+  static_score: number[];
+}
+
 export interface VideoMetadata {
   video: string;
   duration: number;
   analyzed_at: string;
   segments: Segment[];
+  signals?: SignalData;
 }
 
 export interface VideoListItem {

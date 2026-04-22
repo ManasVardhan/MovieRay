@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -39,11 +41,19 @@ class Segment(BaseModel):
         return self
 
 
+class SignalData(BaseModel):
+    timestamps: list[float]
+    audio_energy: list[float]
+    motion: list[float]
+    static_score: list[float]
+
+
 class AnalysisResult(BaseModel):
     video: str
     duration: float
     analyzed_at: str = ""
     segments: list[Segment]
+    signals: Optional[SignalData] = None
 
     def model_post_init(self, __context):
         if not self.analyzed_at:

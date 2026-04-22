@@ -15,7 +15,7 @@ from pipeline.extractors.audio import extract_audio_features
 from pipeline.extractors.motion import extract_motion_features
 from pipeline.extractors.speech import extract_speech_features
 from pipeline.extractors.visual import extract_visual_features
-from pipeline.schemas import AnalysisResult, Segment
+from pipeline.schemas import AnalysisResult, Segment, SignalData
 from pipeline.segmenter import (
     build_segments,
     merge_adjacent_same_label,
@@ -184,7 +184,41 @@ def main(video_path: str | None, youtube: str | None, output: str | None):
             confidence=seg.get("confidence", 0.5), reason=seg.get("reason", ""),
         ))
 
-    result = AnalysisResult(video=os.path.basename(video_path), duration=duration, segments=final_segments)
+    # Build unified signal timeline for visualization
+    # Align all signals to audio timestamps (1-second resolution)
+    signal_timestamps = audio_feats["timestamps"]
+    signal_audio = audio_feats["rms_energy"]
+
+    # Resample motion to audio timestamps
+    mot_ts = motion_feats["motion_timestamps"]
+    mot_vals = motion_feats["motion_magnitudes"]
+    signal_motion = []
+    for t in signal_timestamps:
+        # Find nearest motion value
+        closest = [mot_vals[j] for j, mt in enumerate(mot_ts) if abs(mt - t) < 1.0]
+        signal_motion.append(float(np.mean(closest)) if closest else 0.0)
+
+    # Resample static scores to audio timestamps
+    vis_ts = visual_feats["frame_timestamps"]
+    vis_static = visual_feats["static_scores"]
+    signal_static = []
+    for t in signal_timestamps:
+        closest = [vis_static[j] for j, vt in enumerate(vis_ts) if abs(vt - t) < 1.0]
+        signal_static.append(float(np.mean(closest)) if closest else 0.0)
+
+    signals = SignalData(
+        timestamps=signal_timestamps,
+        audio_energy=signal_audio,
+        motion=signal_motion,
+        static_score=signal_static,
+    )
+
+    result = AnalysisResult(
+        video=os.path.basename(video_path),
+        duration=duration,
+        segments=final_segments,
+        signals=signals,
+    )
 
     if not output:
         output = str(DATA_DIR / f"{video_name}.json")
