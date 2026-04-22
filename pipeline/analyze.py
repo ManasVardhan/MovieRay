@@ -10,7 +10,7 @@ from pathlib import Path
 import click
 import numpy as np
 
-from pipeline.classifier import classify_heuristic, classify_with_llm_batch
+from pipeline.classifier import classify_heuristic, classify_with_vision
 from pipeline.extractors.audio import extract_audio_features
 from pipeline.extractors.motion import extract_motion_features
 from pipeline.extractors.speech import extract_speech_features
@@ -148,12 +148,12 @@ def main(video_path: str | None, youtube: str | None, output: str | None):
         else:
             unclassified_indices.append(i)
 
-    llm_transcript_map = {i: transcript_map[i] for i in unclassified_indices if i in transcript_map}
-
-    if llm_transcript_map:
-        click.echo(f"Classifying {len(llm_transcript_map)} segments via LLM...")
-        llm_results = classify_with_llm_batch(enriched_segments, llm_transcript_map)
-        for r in llm_results:
+    if unclassified_indices:
+        click.echo(f"Classifying {len(unclassified_indices)} segments via vision LLM...")
+        vision_results = classify_with_vision(
+            enriched_segments, unclassified_indices, transcript_map, video_path
+        )
+        for r in vision_results:
             idx = r["index"]
             enriched_segments[idx]["label"] = r["label"]
             enriched_segments[idx]["confidence"] = r["confidence"]

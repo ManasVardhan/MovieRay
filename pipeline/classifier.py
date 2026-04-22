@@ -138,44 +138,108 @@ def classify_heuristic(
     return None
 
 
-def classify_with_llm_batch(segments: list[dict], transcript_map: dict[int, str]) -> list[dict]:
-    if not transcript_map:
+def _extract_segment_frames(video_path: str, start: float, end: float, num_frames: int = 2) -> list[str]:
+    """Extract representative frames from a segment and return as base64 JPEG strings."""
+    import base64
+    import cv2
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    duration = end - start
+
+    # Sample at start and middle of segment
+    if num_frames == 1:
+        sample_times = [start + duration * 0.5]
+    else:
+        sample_times = [start + duration * 0.2, start + duration * 0.7]
+
+    frames_b64 = []
+    for t in sample_times:
+        frame_idx = int(t * fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if ret:
+            # Resize to save tokens (512px wide)
+            h, w = frame.shape[:2]
+            new_w = 512
+            new_h = int(h * new_w / w)
+            frame = cv2.resize(frame, (new_w, new_h))
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            frames_b64.append(base64.b64encode(buf).decode("utf-8"))
+
+    cap.release()
+    return frames_b64
+
+
+def classify_with_vision(
+    segments: list[dict],
+    unclassified_indices: list[int],
+    transcript_map: dict[int, str],
+    video_path: str,
+) -> list[dict]:
+    """Classify segments using a vision LLM that can see frames + transcript."""
+    if not unclassified_indices:
         return []
 
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         import click
-        click.echo("  No OPENROUTER_API_KEY set — skipping LLM classification, defaulting to core_content")
+        click.echo("  No OPENROUTER_API_KEY set — skipping vision classification")
         return [
-            {"index": idx, "label": "core_content", "confidence": 0.5, "reason": "No API key, defaulted to content"}
-            for idx in transcript_map
+            {"index": idx, "label": "core_content", "confidence": 0.5,
+             "reason": "No API key, defaulted to content"}
+            for idx in unclassified_indices
         ]
 
+    import click
     results = []
-    items = list(transcript_map.items())
 
-    for batch_start in range(0, len(items), 10):
-        batch = items[batch_start : batch_start + 10]
+    # Batch 5 segments per request (each has 2 images, so 10 images per call)
+    for batch_start in range(0, len(unclassified_indices), 5):
+        batch_indices = unclassified_indices[batch_start : batch_start + 5]
+        click.echo(f"  Vision classifying segments {batch_indices}...")
 
-        segments_text = ""
-        for idx, text in batch:
+        # Build multimodal content array
+        content = []
+        content.append({
+            "type": "text",
+            "text": """You are analyzing segments of a video. For each segment, I'll show you 2 representative frames and the transcript (if any speech was detected).
+
+Classify each segment as one of:
+- core_content: the main material the viewer came to watch
+- intro: opening sequence, title cards, animated logos, theme music
+- outro: closing sequence, end cards, credits
+- sponsorship: paid ads, product promotions, discount codes, "brought to you by"
+- self_promotion: subscribe/like reminders, merch plugs, social media callouts, Patreon
+- recap: summary of previously covered material
+- transition: brief interstitial screens, bumpers between sections
+- dead_air: silence, inactivity, holding screens
+- filler: unrelated tangents, low-information content
+
+Respond with ONLY a JSON array (no markdown fencing):
+[{"index": <N>, "label": "<label>", "confidence": <0.0-1.0>, "reason": "<one line>"}]
+
+Here are the segments:
+"""
+        })
+
+        for idx in batch_indices:
             seg = segments[idx]
-            segments_text += f'Segment {idx} [{seg["start"]:.1f}s - {seg["end"]:.1f}s]:\n"{text}"\n\n'
+            transcript = transcript_map.get(idx, "(no speech detected)")
 
-        prompt = f"""Classify each video segment below as one of:
-- core_content: the main material the viewer wants to watch
-- sponsorship: paid promotion, discount codes, "brought to you by"
-- self_promotion: subscribe reminders, merch plugs, social media callouts
-- recap: summary of previously covered material, repeated boilerplate
-- filler: unrelated tangents or low-information content
+            content.append({
+                "type": "text",
+                "text": f"\n--- Segment {idx} [{seg['start']:.1f}s - {seg['end']:.1f}s] ---\nTranscript: {transcript}\nFrames:"
+            })
 
-For each segment, respond with a JSON array of objects:
-{{"index": <segment_number>, "label": "<label>", "confidence": <0.0-1.0>, "reason": "<one line>"}}
-
-Segments:
-{segments_text}
-
-Respond with ONLY the JSON array, no other text."""
+            frames = _extract_segment_frames(video_path, seg["start"], seg["end"])
+            for frame_b64 in frames:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{frame_b64}"
+                    }
+                })
 
         try:
             response = requests.post(
@@ -185,28 +249,30 @@ Respond with ONLY the JSON array, no other text."""
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "anthropic/claude-sonnet-4",
+                    "model": "google/gemini-2.5-flash",
                     "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [{"role": "user", "content": content}],
                 },
-                timeout=60,
+                timeout=120,
             )
             response.raise_for_status()
             data = response.json()
             response_text = data["choices"][0]["message"]["content"].strip()
+
             # Strip markdown code fencing if present
             if response_text.startswith("```"):
                 response_text = re.sub(r"^```(?:json)?\s*", "", response_text)
                 response_text = re.sub(r"\s*```$", "", response_text)
+
             batch_results = json.loads(response_text)
             results.extend(batch_results)
+
         except (requests.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
-            import click
-            click.echo(f"  LLM batch failed: {e}")
-            for idx, _ in batch:
+            click.echo(f"  Vision batch failed: {e}")
+            for idx in batch_indices:
                 results.append({
                     "index": idx, "label": "core_content",
-                    "confidence": 0.5, "reason": "LLM classification failed, defaulting to content",
+                    "confidence": 0.5, "reason": "Vision classification failed, defaulting to content",
                 })
 
     return results
