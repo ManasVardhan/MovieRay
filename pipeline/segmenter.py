@@ -51,3 +51,38 @@ def merge_short_segments(
         result = result[1:]
 
     return result
+
+
+def merge_sandwiched_segments(
+    segments: list[dict], max_sandwich_duration: float = 20.0
+) -> list[dict]:
+    """Absorb short differently-labeled segments sandwiched between two same-labeled segments.
+
+    E.g., [sponsorship, transition(15s), sponsorship] -> [sponsorship]
+    This prevents short misclassifications from breaking up contiguous regions.
+    """
+    if len(segments) < 3:
+        return segments
+
+    result = [segments[0].copy()]
+    i = 1
+    while i < len(segments) - 1:
+        cur = segments[i]
+        nxt = segments[i + 1]
+        prev = result[-1]
+        cur_duration = cur["end"] - cur["start"]
+
+        # If prev and next have same label, and current is short, absorb it
+        if prev["label"] == nxt["label"] and cur_duration <= max_sandwich_duration:
+            # Extend prev to cover current and next
+            result[-1]["end"] = nxt["end"]
+            i += 2  # skip both current and next
+        else:
+            result.append(cur.copy())
+            i += 1
+
+    # Don't forget the last segment if we didn't skip it
+    if i == len(segments) - 1:
+        result.append(segments[-1].copy())
+
+    return result

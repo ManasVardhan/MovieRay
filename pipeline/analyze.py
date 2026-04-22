@@ -19,6 +19,7 @@ from pipeline.schemas import AnalysisResult, Segment
 from pipeline.segmenter import (
     build_segments,
     merge_adjacent_same_label,
+    merge_sandwiched_segments,
     merge_short_segments,
 )
 
@@ -167,6 +168,7 @@ def main(video_path: str | None, youtube: str | None, output: str | None):
 
     click.echo("Merging and smoothing segments...")
     merged = merge_adjacent_same_label(enriched_segments)
+    merged = merge_sandwiched_segments(merged)
     merged = merge_short_segments(merged, min_duration=5.0)
 
     final_segments = []
