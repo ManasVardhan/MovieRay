@@ -19,6 +19,7 @@ from pipeline.schemas import AnalysisResult, Segment
 from pipeline.segmenter import (
     build_segments,
     merge_adjacent_same_label,
+    merge_rapid_cuts,
     merge_sandwiched_segments,
     merge_short_segments,
 )
@@ -132,6 +133,11 @@ def main(video_path: str | None, youtube: str | None, output: str | None):
 
     click.echo("Building segments from shot boundaries...")
     raw_segments = build_segments(visual_feats["shot_boundaries"], duration)
+    click.echo(f"  {len(raw_segments)} raw segments from {len(visual_feats['shot_boundaries'])} shot boundaries")
+
+    # Pre-merge rapid cuts (ads, intros with many quick cuts)
+    raw_segments = merge_rapid_cuts(raw_segments)
+    click.echo(f"  {len(raw_segments)} segments after merging rapid cuts")
 
     enriched_segments, transcript_map = _aggregate_features_per_segment(
         raw_segments, audio_feats, visual_feats, motion_feats, speech_feats

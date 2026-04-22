@@ -13,6 +13,37 @@ def build_segments(
     return segments
 
 
+def merge_rapid_cuts(
+    segments: list[dict], min_segment_duration: float = 5.0
+) -> list[dict]:
+    """Pre-merge clusters of very short segments (rapid cuts) into single segments.
+
+    Ads and intros typically have many quick cuts (1-2s each) that create
+    lots of micro-segments. These should be merged before classification
+    so the vision model can see the full context of the rapid-cut sequence.
+    """
+    if not segments:
+        return []
+
+    result = [segments[0].copy()]
+    for seg in segments[1:]:
+        prev = result[-1]
+        prev_duration = prev["end"] - prev["start"]
+        cur_duration = seg["end"] - seg["start"]
+
+        # If both the previous and current segment are short, merge them
+        if prev_duration < min_segment_duration and cur_duration < min_segment_duration:
+            result[-1]["end"] = seg["end"]
+        # If only the current is short and the previous was also recently extended
+        # from merging short segments, keep extending
+        elif cur_duration < min_segment_duration and prev_duration < min_segment_duration * 3:
+            result[-1]["end"] = seg["end"]
+        else:
+            result.append(seg.copy())
+
+    return result
+
+
 def merge_adjacent_same_label(segments: list[dict]) -> list[dict]:
     """Merge consecutive segments that share the same label."""
     if not segments:

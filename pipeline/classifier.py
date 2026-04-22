@@ -194,7 +194,18 @@ Here are the segments:
                 response_text = re.sub(r"^```(?:json)?\s*", "", response_text)
                 response_text = re.sub(r"\s*```$", "", response_text)
 
-            batch_results = json.loads(response_text)
+            # Try parsing, with fallback for common LLM JSON issues
+            try:
+                batch_results = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Try extracting JSON array from messy response
+                match = re.search(r"\[.*\]", response_text, re.DOTALL)
+                if match:
+                    # Fix trailing commas before ]
+                    cleaned = re.sub(r",\s*\]", "]", match.group())
+                    batch_results = json.loads(cleaned)
+                else:
+                    raise
             results.extend(batch_results)
 
         except (requests.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
