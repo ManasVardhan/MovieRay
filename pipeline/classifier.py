@@ -181,6 +181,7 @@ Here are the segments:
                 json={
                     "model": "google/gemini-2.5-flash",
                     "max_tokens": 1024,
+                    "temperature": 0,
                     "messages": [{"role": "user", "content": content}],
                 },
                 timeout=120,
